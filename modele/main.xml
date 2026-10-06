@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.1//EN'
+'http://www.it.uu.se/research/group/darts/uppaal/flat-1_2.dtd'>
+<nta>
+
+<declaration>
+
+
+chan client_query;
+chan client_reply;
+chan ask_root;
+chan root_reply;
+chan ask_tld;
+chan tld_reply;
+chan ask_auth;
+chan auth_reply;
+
+int  txid;
+int  resolved_ip;
+bool cache_valid;
+bool query_resolved;
+bool cache_poisoned;
+
+const int REAL_IP  = 157;
+const int TTL_MAX  = 300;
+const int TIMEOUT  = 10;
+const int MAX_TXID = 65535;
+</declaration>
+
+
+<template>
+  <name x="5" y="5">Client</name>
+  <declaration>clock wait_timer;</declaration>
+
+  <location id="c0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+  </location>
+  <location id="c1" x="200" y="0">
+    <name x="175" y="-30">Waiting</name>
+    <label kind="invariant" x="175" y="10">wait_timer &lt;= TIMEOUT</label>
+  </location>
+  <location id="c2" x="400" y="-80">
+    <name x="380" y="-110">Resolved</name>
+  </location>
+  <location id="c3" x="400" y="80">
+    <name x="380" y="90">Failed</name>
+  </location>
+
+  <init ref="c0"/>
+
+  <transition>
+    <source ref="c0"/>
+    <target ref="c1"/>
+    <label kind="synchronisation" x="60" y="-20">client_query!</label>
+    <label kind="assignment" x="60" y="-5">wait_timer = 0, txid = 42, query_resolved = false</label>
+  </transition>
+
+  <transition>
+    <source ref="c1"/>
+    <target ref="c2"/>
+    <label kind="guard" x="240" y="-55">query_resolved</label>
+    <label kind="synchronisation" x="240" y="-40">client_reply?</label>
+  </transition>
+
+  <transition>
+    <source ref="c1"/>
+    <target ref="c3"/>
+    <label kind="guard" x="240" y="30">wait_timer &gt;= TIMEOUT</label>
+  </transition>
+
+  
+  <transition>
+    <source ref="c3"/>
+    <target ref="c3"/>
+    <label kind="synchronisation" x="430" y="80">client_reply?</label>
+  </transition>
+  <transition>
+    <source ref="c2"/>
+    <target ref="c0"/>
+  </transition>
+
+  <transition>
+    <source ref="c3"/>
+    <target ref="c0"/>
+  </transition>
+</template>
+
+
+
+<template>
+  <name x="5" y="5">Resolver</name>
+  <declaration>
+    clock ttl_clock;
+    clock res_timer;
+  </declaration>
+
+ 
+  <location id="r0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+  </location>
+
+
+  <location id="r1" x="200" y="0">
+    <name x="160" y="-30">Check_Cache</name>
+    <committed/>
+  </location>
+
+  <location id="r2" x="400" y="-160">
+    <name x="370" y="-190">Ask_Root</name>
+    <committed/>
+  </location>
+
+  <location id="r3" x="600" y="-160">
+    <name x="565" y="-190">Wait_Root</name>
+  </location>
+
+  <location id="r4" x="800" y="-160">
+    <name x="770" y="-190">Ask_TLD</name>
+    <committed/>
+  </location>
+
+  <location id="r5" x="1000" y="-160">
+    <name x="965" y="-190">Wait_TLD</name>
+  </location>
+
+  <location id="r6" x="1200" y="-160">
+    <name x="1165" y="-190">Ask_Auth</name>
+    <committed/>
+  </location>
+
+  <location id="r7" x="1200" y="0">
+    <name x="1165" y="-30">Wait_Auth</name>
+  </location>
+
+  <location id="r8" x="900" y="0">
+    <name x="860" y="-30">Store_Cache</name>
+    <committed/>
+  </location>
+
+  <location id="r9" x="550" y="0">
+    <name x="515" y="-30">Send_Reply</name>
+    <committed/>
+  </location>
+
+  <location id="r10" x="200" y="160">
+    <name x="155" y="170">Cache_Expired</name>
+    <committed/>
+  </location>
+
+  <init ref="r0"/>
+
+  <transition>
+    <source ref="r0"/>
+    <target ref="r1"/>
+    <label kind="synchronisation" x="60" y="-15">client_query?</label>
+  </transition>
+
+  <transition>
+    <source ref="r1"/>
+    <target ref="r9"/>
+    <label kind="guard" x="280" y="40">cache_valid &amp;&amp; resolved_ip != 0</label>
+    <label kind="assignment" x="280" y="55">query_resolved = true</label>
+  </transition>
+
+  <transition>
+    <source ref="r1"/>
+    <target ref="r2"/>
+    <label kind="guard" x="240" y="-110">!cache_valid</label>
+    <label kind="assignment" x="240" y="-95">res_timer = 0</label>
+  </transition>
+
+  <transition>
+    <source ref="r2"/>
+    <target ref="r3"/>
+    <label kind="synchronisation" x="460" y="-185">ask_root!</label>
+  </transition>
+
+  <transition>
+    <source ref="r3"/>
+    <target ref="r4"/>
+    <label kind="synchronisation" x="660" y="-185">root_reply?</label>
+  </transition>
+
+  <transition>
+    <source ref="r4"/>
+    <target ref="r5"/>
+    <label kind="synchronisation" x="860" y="-185">ask_tld!</label>
+  </transition>
+
+  <transition>
+    <source ref="r5"/>
+    <target ref="r6"/>
+    <label kind="synchronisation" x="1060" y="-185">tld_reply?</label>
+  </transition>
+
+  <transition>
+    <source ref="r6"/>
+    <target ref="r7"/>
+    <label kind="synchronisation" x="1175" y="-80">ask_auth!</label>
+  </transition>
+
+  <transition>
+    <source ref="r7"/>
+    <target ref="r8"/>
+    <label kind="synchronisation" x="1010" y="-15">auth_reply?</label>
+    <label kind="assignment" x="1010" y="0">resolved_ip = REAL_IP, cache_valid = true, ttl_clock = 0, query_resolved = true</label>
+  </transition>
+
+  <transition>
+    <source ref="r8"/>
+    <target ref="r9"/>
+  </transition>
+
+  <transition>
+    <source ref="r9"/>
+    <target ref="r0"/>
+    <label kind="synchronisation" x="160" y="15">client_reply!</label>
+  </transition>
+
+  <transition>
+    <source ref="r0"/>
+    <target ref="r10"/>
+    <label kind="guard" x="-120" y="60">cache_valid &amp;&amp; ttl_clock &gt;= TTL_MAX</label>
+    <label kind="assignment" x="-120" y="75">cache_valid = false, resolved_ip = 0</label>
+  </transition>
+
+  <transition>
+    <source ref="r10"/>
+    <target ref="r0"/>
+  </transition>
+</template>
+
+
+<template>
+  <name x="5" y="5">RootNS</name>
+  <declaration></declaration>
+  <location id="rn0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+  </location>
+  <location id="rn1" x="200" y="0">
+    <name x="165" y="-30">Got_Query</name>
+    <committed/>
+  </location>
+  <init ref="rn0"/>
+  <transition>
+    <source ref="rn0"/>
+    <target ref="rn1"/>
+    <label kind="synchronisation" x="50" y="-20">ask_root?</label>
+  </transition>
+  <transition>
+    <source ref="rn1"/>
+    <target ref="rn0"/>
+    <label kind="synchronisation" x="50" y="15">root_reply!</label>
+  </transition>
+</template>
+
+
+<template>
+  <name x="5" y="5">TLD_NS</name>
+  <declaration></declaration>
+  <location id="tn0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+  </location>
+  <location id="tn1" x="200" y="0">
+    <name x="165" y="-30">Got_Query</name>
+    <committed/>
+  </location>
+  <init ref="tn0"/>
+  <transition>
+    <source ref="tn0"/>
+    <target ref="tn1"/>
+    <label kind="synchronisation" x="50" y="-20">ask_tld?</label>
+  </transition>
+  <transition>
+    <source ref="tn1"/>
+    <target ref="tn0"/>
+    <label kind="synchronisation" x="50" y="15">tld_reply!</label>
+  </transition>
+</template>
+
+
+<template>
+  <name x="5" y="5">AuthNS</name>
+  <declaration></declaration>
+  <location id="an0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+  </location>
+  <location id="an1" x="200" y="0">
+    <name x="165" y="-30">Got_Query</name>
+    <committed/>
+  </location>
+  <init ref="an0"/>
+  <transition>
+    <source ref="an0"/>
+    <target ref="an1"/>
+    <label kind="synchronisation" x="50" y="-20">ask_auth?</label>
+  </transition>
+  <transition>
+    <source ref="an1"/>
+    <target ref="an0"/>
+    <label kind="synchronisation" x="50" y="15">auth_reply!</label>
+  </transition>
+</template>
+
+
+<system>
+client   = Client();
+resolver = Resolver();
+rootns   = RootNS();
+tldns    = TLD_NS();
+authns   = AuthNS();
+
+system client, resolver, rootns, tldns, authns;
+</system>
+
+
+<queries>
+  <query>
+    <formula>A[] not deadlock</formula>
+    <comment>PROPERTY 1 - No deadlock. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>E&lt;&gt; client.Resolved</formula>
+    <comment>PROPERTY 2 - Client CAN resolve. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>A[] not cache_poisoned</formula>
+    <comment>PROPERTY 3 - Cache never poisoned (no attacker). Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>client.Waiting --&gt; (client.Resolved or client.Failed)</formula>
+    <comment>PROPERTY 4 - Liveness: query always ends. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>E&lt;&gt; resolver.Store_Cache</formula>
+    <comment>PROPERTY 5 - Cache store reachable. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>A[] (resolver.Wait_Auth imply resolved_ip == 0)</formula>
+    <comment>PROPERTY 6 - IP unknown until Auth NS replies. Expected: SATISFIED</comment>
+  </query>
+</queries>
+
+</nta>

@@ -1,0 +1,475 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.6//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_6.dtd'>
+<nta>
+<declaration>
+broadcast chan  client_query;
+broadcast chan  client_reply;
+broadcast chan  ask_root;
+broadcast chan  root_reply;
+broadcast chan  ask_tld;
+broadcast chan  tld_reply;
+broadcast chan  ask_auth;
+broadcast chan  auth_reply;
+broadcast chan  fake_auth_reply;
+
+int   txid;
+int   resolved_ip;
+bool  cache_valid;
+bool  query_resolved;
+bool  cache_poisoned;
+bool  query_in_progress;
+
+const int REAL_IP  = 157;
+const int FAKE_IP  = 666;
+const int TTL_MAX  = 300;
+const int TIMEOUT  = 10;
+const int MAX_TXID = 65535;
+</declaration>
+
+  <template>
+    <name x="5" y="5">Client</name>
+    <declaration>clock wait_timer;</declaration>
+
+    <location id="id0" x="0" y="0">
+      <name x="-15" y="-30">Idle</name>
+      <label kind="exponentialrate" x="-15" y="10">1</label>
+    </location>
+    <location id="id1" x="200" y="0">
+      <name x="175" y="-30">Waiting</name>
+      <label kind="invariant" x="175" y="10">wait_timer &lt;= TIMEOUT</label>
+    </location>
+    <location id="id2" x="400" y="-80">
+      <name x="380" y="-110">Resolved</name>
+      <label kind="exponentialrate" x="380" y="-60">1</label>
+    </location>
+    <location id="id3" x="400" y="80">
+      <name x="380" y="90">Failed</name>
+      <label kind="exponentialrate" x="380" y="110">1</label>
+    </location>
+
+    <init ref="id0"/>
+
+    <transition id="id4">
+      <source ref="id0"/>
+      <target ref="id1"/>
+      <label kind="synchronisation" x="60" y="-20">client_query!</label>
+      <label kind="assignment" x="60" y="-5">wait_timer = 0, txid = 42, query_resolved = false</label>
+    </transition>
+    <transition id="id5">
+      <source ref="id1"/>
+      <target ref="id2"/>
+      <label kind="guard" x="240" y="-55">query_resolved</label>
+      <label kind="synchronisation" x="240" y="-40">client_reply?</label>
+    </transition>
+    <transition id="id6">
+      <source ref="id1"/>
+      <target ref="id3"/>
+      <label kind="guard" x="240" y="30">wait_timer &gt;= TIMEOUT</label>
+    </transition>
+    <transition id="id7">
+      <source ref="id3"/>
+      <target ref="id3"/>
+      <label kind="synchronisation" x="430" y="80">client_reply?</label>
+      <nail x="370" y="50"/>
+      <nail x="430" y="50"/>
+    </transition>
+    <transition id="id8">
+      <source ref="id2"/>
+      <target ref="id0"/>
+      <label kind="guard" x="300" y="-50">wait_timer &gt;= 2</label>
+    </transition>
+    <transition id="id9">
+      <source ref="id3"/>
+      <target ref="id0"/>
+      <label kind="guard" x="300" y="50">wait_timer &gt;= 12</label>
+    </transition>
+  </template>
+
+  <template>
+    <name x="5" y="5">Resolver</name>
+    <declaration>
+clock ttl_clock;
+clock res_timer;
+clock urg;        /* urgency clock – replaces committed */
+    </declaration>
+
+    <location id="id10" x="0" y="0">
+      <name x="-15" y="-30">Idle</name>
+      <label kind="exponentialrate" x="-15" y="10">10</label>
+    </location>
+
+    <location id="id11" x="200" y="0">
+      <name x="160" y="-30">Check_Cache</name>
+      <label kind="invariant" x="160" y="10">urg &lt;= 0</label>
+    </location>
+
+    <location id="id12" x="400" y="-160">
+      <name x="370" y="-190">Ask_Root</name>
+      <label kind="invariant" x="370" y="-150">urg &lt;= 0</label>
+    </location>
+
+    <location id="id13" x="600" y="-160">
+      <name x="565" y="-190">Wait_Root</name>
+    </location>
+
+    <location id="id14" x="800" y="-160">
+      <name x="770" y="-190">Ask_TLD</name>
+      <label kind="invariant" x="770" y="-150">urg &lt;= 0</label>
+    </location>
+
+    <location id="id15" x="1000" y="-160">
+      <name x="965" y="-190">Wait_TLD</name>
+    </location>
+
+    <location id="id16" x="1200" y="-160">
+      <name x="1165" y="-190">Ask_Auth</name>
+      <label kind="invariant" x="1165" y="-150">urg &lt;= 0</label>
+    </location>
+
+    <location id="id17" x="1200" y="0">
+      <name x="1165" y="-30">Wait_Auth</name>
+    </location>
+
+    <location id="id18" x="900" y="0">
+      <name x="860" y="-30">Store_Cache</name>
+      <label kind="invariant" x="860" y="10">urg &lt;= 0</label>
+    </location>
+
+    <location id="id19" x="550" y="0">
+      <name x="515" y="-30">Send_Reply</name>
+      <label kind="invariant" x="515" y="10">urg &lt;= 0</label>
+    </location>
+
+    <location id="id20" x="1200" y="160">
+      <name x="1155" y="170">Cache_Poisoned</name>
+      <label kind="invariant" x="1155" y="190">urg &lt;= 0</label>
+    </location>
+
+    <location id="id21" x="200" y="160">
+      <name x="155" y="170">Cache_Expired</name>
+      <label kind="invariant" x="155" y="190">urg &lt;= 0</label>
+    </location>
+
+    <init ref="id10"/>
+
+    <transition id="id22">
+      <source ref="id10"/>
+      <target ref="id11"/>
+      <label kind="synchronisation" x="60" y="-15">client_query?</label>
+      <label kind="assignment" x="60" y="0">query_in_progress = true, urg = 0</label>
+    </transition>
+
+    <transition id="id23">
+      <source ref="id11"/>
+      <target ref="id19"/>
+      <label kind="guard" x="280" y="40">cache_valid &amp;&amp; resolved_ip != 0</label>
+      <label kind="assignment" x="280" y="55">query_resolved = true, query_in_progress = false, urg = 0</label>
+    </transition>
+
+    <transition id="id24">
+      <source ref="id11"/>
+      <target ref="id12"/>
+      <label kind="guard" x="240" y="-110">!cache_valid</label>
+      <label kind="assignment" x="240" y="-95">res_timer = 0, urg = 0</label>
+    </transition>
+
+    <transition id="id25">
+      <source ref="id12"/>
+      <target ref="id13"/>
+      <label kind="synchronisation" x="460" y="-185">ask_root!</label>
+    </transition>
+    <transition id="id26">
+      <source ref="id13"/>
+      <target ref="id14"/>
+      <label kind="synchronisation" x="660" y="-185">root_reply?</label>
+      <label kind="assignment" x="660" y="-170">urg = 0</label>
+    </transition>
+    <transition id="id27">
+      <source ref="id14"/>
+      <target ref="id15"/>
+      <label kind="synchronisation" x="860" y="-185">ask_tld!</label>
+    </transition>
+    <transition id="id28">
+      <source ref="id15"/>
+      <target ref="id16"/>
+      <label kind="synchronisation" x="1060" y="-185">tld_reply?</label>
+      <label kind="assignment" x="1060" y="-170">urg = 0</label>
+    </transition>
+    <transition id="id29">
+      <source ref="id16"/>
+      <target ref="id17"/>
+      <label kind="synchronisation" x="1175" y="-80">ask_auth!</label>
+    </transition>
+
+    <transition id="id30">
+      <source ref="id17"/>
+      <target ref="id18"/>
+      <label kind="synchronisation" x="1010" y="-20">auth_reply?</label>
+      <label kind="assignment" x="1010" y="-5">resolved_ip = REAL_IP, cache_valid = true, ttl_clock = 0, query_resolved = true, query_in_progress = false, urg = 0</label>
+    </transition>
+
+    <transition id="id31">
+      <source ref="id17"/>
+      <target ref="id20"/>
+      <label kind="synchronisation" x="1210" y="60">fake_auth_reply?</label>
+      <label kind="assignment" x="1210" y="75">resolved_ip = FAKE_IP, cache_valid = true, cache_poisoned = true, query_resolved = true, query_in_progress = false, urg = 0</label>
+    </transition>
+
+    <transition id="id32">
+      <source ref="id20"/>
+      <target ref="id19"/>
+      <label kind="assignment" x="1350" y="110">urg = 0</label>
+    </transition>
+    <transition id="id33">
+      <source ref="id18"/>
+      <target ref="id19"/>
+      <label kind="assignment" x="720" y="-30">urg = 0</label>
+    </transition>
+    <transition id="id34">
+      <source ref="id19"/>
+      <target ref="id10"/>
+      <label kind="synchronisation" x="160" y="15">client_reply!</label>
+    </transition>
+
+    <transition id="id35">
+      <source ref="id10"/>
+      <target ref="id21"/>
+      <label kind="guard" x="-120" y="60">cache_valid &amp;&amp; ttl_clock &gt;= TTL_MAX</label>
+      <label kind="assignment" x="-120" y="75">cache_valid = false, resolved_ip = 0, cache_poisoned = false, urg = 0</label>
+    </transition>
+    <transition id="id36">
+      <source ref="id21"/>
+      <target ref="id10"/>
+    </transition>
+  </template>
+
+  <template>
+    <name x="5" y="5">RootNS</name>
+    <declaration>clock urg;</declaration>
+
+    <location id="id37" x="0" y="0">
+      <name x="-15" y="-30">Idle</name>
+    </location>
+    <location id="id38" x="200" y="0">
+      <name x="165" y="-30">Got_Query</name>
+      <label kind="invariant" x="165" y="10">urg &lt;= 0</label>
+    </location>
+
+    <init ref="id37"/>
+
+    <transition id="id39">
+      <source ref="id37"/>
+      <target ref="id38"/>
+      <label kind="synchronisation" x="50" y="-20">ask_root?</label>
+      <label kind="assignment" x="50" y="-5">urg = 0</label>
+    </transition>
+    <transition id="id40">
+      <source ref="id38"/>
+      <target ref="id37"/>
+      <label kind="synchronisation" x="50" y="15">root_reply!</label>
+    </transition>
+  </template>
+
+  <template>
+    <name x="5" y="5">TLD_NS</name>
+    <declaration>clock urg;</declaration>
+
+    <location id="id41" x="0" y="0">
+      <name x="-15" y="-30">Idle</name>
+    </location>
+    <location id="id42" x="200" y="0">
+      <name x="165" y="-30">Got_Query</name>
+      <label kind="invariant" x="165" y="10">urg &lt;= 0</label>
+    </location>
+
+    <init ref="id41"/>
+
+    <transition id="id43">
+      <source ref="id41"/>
+      <target ref="id42"/>
+      <label kind="synchronisation" x="50" y="-20">ask_tld?</label>
+      <label kind="assignment" x="50" y="-5">urg = 0</label>
+    </transition>
+    <transition id="id44">
+      <source ref="id42"/>
+      <target ref="id41"/>
+      <label kind="synchronisation" x="50" y="15">tld_reply!</label>
+    </transition>
+  </template>
+
+  <template>
+    <name x="5" y="5">AuthNS</name>
+
+    <location id="id45" x="0" y="0">
+      <name x="-15" y="-30">Idle</name>
+    </location>
+
+    <location id="id46" x="200" y="0">
+      <name x="165" y="-30">Got_Query</name>
+      <label kind="exponentialrate" x="165" y="10">1</label>
+    </location>
+
+    <init ref="id45"/>
+
+    <transition id="id47">
+      <source ref="id45"/>
+      <target ref="id46"/>
+      <label kind="synchronisation" x="50" y="-20">ask_auth?</label>
+    </transition>
+    <transition id="id48">
+      <source ref="id46"/>
+      <target ref="id45"/>
+      <label kind="synchronisation" x="50" y="15">auth_reply!</label>
+    </transition>
+    <transition id="id49">
+      <source ref="id46"/>
+      <target ref="id46"/>
+      <label kind="synchronisation" x="180" y="30">ask_auth?</label>
+      <nail x="170" y="30"/>
+      <nail x="230" y="30"/>
+    </transition>
+  </template>
+
+  <template>
+    <name x="5" y="5">Attacker_Kaminsky</name>
+    <declaration>
+int guess;
+    </declaration>
+
+    <location id="id50" x="0" y="0">
+      <name x="-15" y="-30">Idle</name>
+      <label kind="exponentialrate" x="-15" y="10">100</label>
+    </location>
+    <location id="id51" x="200" y="0">
+      <name x="165" y="-30">Sniffing</name>
+      <label kind="exponentialrate" x="165" y="10">100</label>
+    </location>
+    <location id="id52" x="400" y="0">
+      <name x="365" y="-30">Flooding</name>
+      <label kind="exponentialrate" x="365" y="10">100</label>
+    </location>
+    <location id="id53" x="600" y="0">
+      <name x="575" y="-30">Poisoned</name>
+      <label kind="exponentialrate" x="575" y="10">100</label>
+    </location>
+
+    <init ref="id50"/>
+
+    <transition id="id54">
+      <source ref="id50"/>
+      <target ref="id51"/>
+      <label kind="guard" x="50" y="-30">query_in_progress</label>
+      <label kind="assignment" x="50" y="-15">guess = 0</label>
+    </transition>
+    <transition id="id55">
+      <source ref="id51"/>
+      <target ref="id52"/>
+      <label kind="guard" x="238" y="-59">query_in_progress</label>
+    </transition>
+    <transition id="id56">
+      <source ref="id52"/>
+      <target ref="id52"/>
+      <label kind="guard" x="360" y="30">guess != txid &amp;&amp; guess &lt; MAX_TXID</label>
+      <label kind="assignment" x="360" y="45">guess = guess + 1</label>
+      <nail x="370" y="-30"/>
+      <nail x="430" y="-30"/>
+    </transition>
+    <transition id="id57">
+      <source ref="id52"/>
+      <target ref="id53"/>
+      <label kind="guard" x="450" y="-76">guess == txid</label>
+      <label kind="synchronisation" x="440" y="-15">fake_auth_reply!</label>
+    </transition>
+    <transition id="id58">
+      <source ref="id53"/>
+      <target ref="id50"/>
+      <label kind="guard" x="300" y="80">!query_in_progress</label>
+    </transition>
+    <transition id="id59">
+      <source ref="id52"/>
+      <target ref="id50"/>
+      <label kind="guard" x="200" y="80">!query_in_progress</label>
+    </transition>
+    <transition id="id60">
+      <source ref="id51"/>
+      <target ref="id50"/>
+      <label kind="guard" x="100" y="80">!query_in_progress</label>
+    </transition>
+  </template>
+
+  <system>
+client   = Client();
+resolver = Resolver();
+rootns   = RootNS();
+tldns    = TLD_NS();
+authns   = AuthNS();
+attacker = Attacker_Kaminsky();
+
+system client, resolver, rootns, tldns, authns, attacker;
+  </system>
+
+<queries>
+    <option key="--diagnostic" value="0"/>
+
+    <query>
+      <formula>A[] not deadlock</formula>
+      <comment>No deadlock. Expected: SATISFIED</comment>
+    </query>
+
+    <query>
+      <formula>E&lt;&gt; attacker.Poisoned</formula>
+      <comment>ATTACK: attacker CAN succeed. Expected: SATISFIED</comment>
+    </query>
+
+    <query>
+      <formula>A[] not cache_poisoned</formula>
+      <comment>SAFETY BROKEN: cache CAN be poisoned. Expected: NOT SATISFIED</comment>
+    </query>
+
+    <query>
+      <formula>E&lt;&gt; client.Resolved</formula>
+      <comment>Client CAN still resolve legitimately. Expected: SATISFIED</comment>
+    </query>
+
+    <query>
+      <formula>client.Waiting --&gt; (client.Resolved or client.Failed)</formula>
+      <comment>Liveness: every query eventually terminates. Expected: SATISFIED</comment>
+    </query>
+
+    <query>
+      <formula>E&lt;&gt; (client.Resolved &amp;&amp; resolved_ip == FAKE_IP)</formula>
+      <comment>WORST CASE: client resolves to FAKE IP. Expected: SATISFIED</comment>
+    </query>
+
+    <query>
+      <formula>E&lt;&gt; resolver.Cache_Expired</formula>
+      <comment>Cache can expire after TTL_MAX. Expected: SATISFIED</comment>
+    </query>
+
+    <query>
+      <formula>Pr[&lt;=100] (&lt;&gt; attacker.Poisoned)</formula>
+      <comment>SMC Q1 — P(poisoning) within 100 t.u. Expected ≈ 0.95–1.0</comment>
+    </query>
+
+    <query>
+      <formula>simulate [&lt;=100; 10] { resolved_ip }</formula>
+      <comment>SMC Q2 — 10 simulation traces of resolved_ip</comment>
+    </query>
+
+    <query>
+      <formula>Pr[&lt;=100] (&lt;&gt; client.Resolved &amp;&amp; resolved_ip == FAKE_IP)</formula>
+      <comment>SMC Q3a — P(client gets FAKE IP). Expected ≈ 0.90–0.99</comment>
+    </query>
+
+    <query>
+      <formula>Pr[&lt;=100] (&lt;&gt; client.Resolved &amp;&amp; resolved_ip == REAL_IP)</formula>
+      <comment>SMC Q3b — P(client gets REAL IP). Expected ≈ 0.01–0.10</comment>
+    </query>
+
+    <query>
+      <formula>simulate [&lt;=100; 10] { resolved_ip, cache_poisoned }</formula>
+      <comment>SMC Q4 — Dual trace to cross-verify attack variables</comment>
+    </query>
+
+  </queries>
+</nta>

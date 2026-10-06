@@ -1,0 +1,572 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.1//EN'
+'http://www.it.uu.se/research/group/darts/uppaal/flat-1_2.dtd'>
+<nta>
+
+<declaration>
+
+
+broadcast chan client_query;
+broadcast chan client_reply;
+broadcast chan ask_root;
+broadcast chan root_reply;
+broadcast chan ask_tld;
+broadcast chan tld_reply;
+broadcast chan ask_auth;
+broadcast chan auth_reply;
+broadcast chan fake_auth_reply;
+
+int  txid;
+int  resolved_ip;
+bool cache_valid;
+bool query_resolved;
+bool cache_poisoned;
+bool query_in_progress;
+bool query_cancelled;
+
+int  source_port = -1;
+int  port_guess;
+
+const int REAL_IP        = 157;
+const int FAKE_IP        = 666;
+const int TTL_MAX        = 300;
+const int TIMEOUT        = 10;
+const int FIXED_TXID     = 3;
+
+const int MAX_GUESS      = 5;
+const int MAX_PORT_GUESS = 5;
+
+// RANDOM_PORT must be greater than MAX_PORT_GUESS so attacker can never guess it
+const int RANDOM_PORT    = 12;
+</declaration>
+
+
+
+<template>
+  <name x="5" y="5">Client</name>
+  <declaration>clock wait_timer;</declaration>
+
+ 
+  <location id="c0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+    <label kind="exponentialrate" x="-15" y="15">1</label>
+  </location>
+
+ 
+  <location id="c1" x="200" y="0">
+    <name x="175" y="-30">Waiting</name>
+    <label kind="invariant" x="175" y="10">wait_timer &lt;= TIMEOUT</label>
+  </location>
+
+
+  <location id="c2" x="400" y="-80">
+    <name x="380" y="-110">Resolved</name>
+    <committed/>
+  </location>
+
+
+  <location id="c3" x="400" y="80">
+    <name x="380" y="90">Failed</name>
+    <committed/>
+  </location>
+
+  <init ref="c0"/>
+
+  <transition>
+    <source ref="c0"/>
+    <target ref="c1"/>
+    <label kind="synchronisation" x="60" y="-20">client_query!</label>
+    <label kind="assignment" x="60" y="-5">wait_timer = 0, txid = FIXED_TXID, query_resolved = false, query_cancelled = false</label>
+  </transition>
+
+
+  <transition>
+    <source ref="c1"/>
+    <target ref="c2"/>
+    <label kind="guard" x="240" y="-55">query_resolved</label>
+    <label kind="synchronisation" x="240" y="-40">client_reply?</label>
+  </transition>
+
+  
+  <transition>
+    <source ref="c1"/>
+    <target ref="c3"/>
+    <label kind="guard" x="240" y="30">wait_timer == TIMEOUT</label>
+    <label kind="assignment" x="240" y="45">query_cancelled = true</label>
+  </transition>
+
+  <transition>
+    <source ref="c2"/>
+    <target ref="c0"/>
+  </transition>
+
+  <transition>
+    <source ref="c3"/>
+    <target ref="c0"/>
+  </transition>
+
+</template>
+
+
+
+<template>
+  <name x="5" y="5">Resolver</name>
+  <declaration>
+    clock ttl_clock;
+    clock res_timer;
+  </declaration>
+
+
+  <location id="r0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+    <label kind="exponentialrate" x="-15" y="15">1</label>
+  </location>
+
+  <location id="r1" x="200" y="0">
+    <name x="160" y="-30">Check_Cache</name>
+    <committed/>
+  </location>
+
+  <location id="r2" x="400" y="-160">
+    <name x="370" y="-190">Ask_Root</name>
+    <committed/>
+  </location>
+
+
+  <location id="r3" x="600" y="-160">
+    <name x="565" y="-190">Wait_Root</name>
+    <label kind="exponentialrate" x="565" y="-155">1</label>
+  </location>
+
+  <location id="r4" x="800" y="-160">
+    <name x="770" y="-190">Ask_TLD</name>
+    <committed/>
+  </location>
+
+  <location id="r5" x="1000" y="-160">
+    <name x="965" y="-190">Wait_TLD</name>
+    <label kind="exponentialrate" x="965" y="-155">1</label>
+  </location>
+
+  <location id="r6" x="1200" y="-160">
+    <name x="1165" y="-190">Ask_Auth</name>
+    <committed/>
+  </location>
+
+ 
+  <location id="r7" x="1200" y="0">
+    <name x="1165" y="-30">Wait_Auth</name>
+    <label kind="exponentialrate" x="1165" y="15">1</label>
+  </location>
+
+  <location id="r8" x="900" y="0">
+    <name x="860" y="-30">Store_Cache</name>
+    <committed/>
+  </location>
+
+  <location id="r9" x="550" y="0">
+    <name x="515" y="-30">Send_Reply</name>
+    <committed/>
+  </location>
+
+  <location id="r10" x="200" y="160">
+    <name x="155" y="170">Cache_Expired</name>
+    <committed/>
+  </location>
+
+  <init ref="r0"/>
+
+
+  <transition>
+    <source ref="r0"/>
+    <target ref="r1"/>
+    <label kind="synchronisation" x="60" y="-15">client_query?</label>
+    <label kind="assignment" x="60" y="0">query_in_progress = true</label>
+  </transition>
+
+
+  <transition>
+    <source ref="r0"/>
+    <target ref="r0"/>
+    <label kind="synchronisation" x="-220" y="-15">auth_reply?</label>
+  </transition>
+
+  
+  <transition>
+    <source ref="r1"/>
+    <target ref="r9"/>
+    <label kind="guard" x="280" y="40">cache_valid &amp;&amp; resolved_ip != 0</label>
+    <label kind="assignment" x="280" y="55">query_resolved = true</label>
+  </transition>
+
+  
+  <transition>
+    <source ref="r1"/>
+    <target ref="r2"/>
+    <label kind="guard" x="240" y="-110">!cache_valid</label>
+    <label kind="assignment" x="240" y="-95">res_timer = 0</label>
+  </transition>
+
+  <transition>
+    <source ref="r2"/>
+    <target ref="r3"/>
+    <label kind="synchronisation" x="460" y="-185">ask_root!</label>
+  </transition>
+
+  <transition>
+    <source ref="r3"/>
+    <target ref="r9"/>
+    <label kind="guard" x="580" y="-80">query_cancelled</label>
+  </transition>
+  <transition>
+    <source ref="r3"/>
+    <target ref="r4"/>
+    <label kind="guard" x="660" y="-185">!query_cancelled</label>
+    <label kind="synchronisation" x="660" y="-170">root_reply?</label>
+  </transition>
+
+  <transition>
+    <source ref="r4"/>
+    <target ref="r5"/>
+    <label kind="synchronisation" x="860" y="-185">ask_tld!</label>
+  </transition>
+
+  
+  <transition>
+    <source ref="r5"/>
+    <target ref="r9"/>
+    <label kind="guard" x="980" y="-80">query_cancelled</label>
+  </transition>
+  <transition>
+    <source ref="r5"/>
+    <target ref="r6"/>
+    <label kind="guard" x="1060" y="-185">!query_cancelled</label>
+    <label kind="synchronisation" x="1060" y="-170">tld_reply?</label>
+  </transition>
+
+ 
+  <transition>
+    <source ref="r6"/>
+    <target ref="r7"/>
+    <label kind="synchronisation" x="1175" y="-80">ask_auth!</label>
+    <label kind="assignment" x="1175" y="-65">source_port = RANDOM_PORT</label>
+  </transition>
+
+ 
+  <transition>
+    <source ref="r7"/>
+    <target ref="r9"/>
+    <label kind="guard" x="1010" y="-60">query_cancelled</label>
+    <label kind="synchronisation" x="1010" y="-45">auth_reply?</label>
+    <label kind="assignment" x="1010" y="-30">query_in_progress = false</label>
+  </transition>
+
+  
+  <transition>
+    <source ref="r7"/>
+    <target ref="r9"/>
+    <label kind="guard" x="1210" y="-60">query_cancelled</label>
+    <label kind="synchronisation" x="1210" y="-45">fake_auth_reply?</label>
+    <label kind="assignment" x="1210" y="-30">query_in_progress = false</label>
+  </transition>
+
+  <transition>
+    <source ref="r7"/>
+    <target ref="r8"/>
+    <label kind="guard" x="1010" y="-40">!query_cancelled</label>
+    <label kind="synchronisation" x="1010" y="-25">auth_reply?</label>
+    <label kind="assignment" x="1010" y="-10">resolved_ip = REAL_IP, cache_valid = true, ttl_clock = 0, query_resolved = true, query_in_progress = false</label>
+  </transition>
+
+  <transition>
+    <source ref="r7"/>
+    <target ref="r8"/>
+    <label kind="guard" x="1210" y="40">port_guess == source_port &amp;&amp; !query_cancelled</label>
+    <label kind="synchronisation" x="1210" y="55">fake_auth_reply?</label>
+    <label kind="assignment" x="1210" y="70">resolved_ip = FAKE_IP, cache_valid = true, cache_poisoned = true, query_resolved = true, query_in_progress = false</label>
+  </transition>
+
+  <transition>
+    <source ref="r8"/>
+    <target ref="r9"/>
+  </transition>
+
+  <transition>
+    <source ref="r9"/>
+    <target ref="r0"/>
+    <label kind="guard" x="160" y="-20">!query_cancelled</label>
+    <label kind="synchronisation" x="160" y="-5">client_reply!</label>
+    <label kind="assignment" x="160" y="10">query_in_progress = false</label>
+  </transition>
+
+ 
+  <transition>
+    <source ref="r9"/>
+    <target ref="r0"/>
+    <label kind="guard" x="160" y="40">query_cancelled</label>
+    <label kind="assignment" x="160" y="55">query_in_progress = false, query_resolved = false, query_cancelled = false</label>
+  </transition>
+
+
+  <transition>
+    <source ref="r0"/>
+    <target ref="r10"/>
+    <label kind="guard" x="-120" y="60">cache_valid &amp;&amp; ttl_clock &gt;= TTL_MAX</label>
+    <label kind="assignment" x="-120" y="75">cache_valid = false, resolved_ip = 0, cache_poisoned = false</label>
+  </transition>
+  <transition>
+    <source ref="r10"/>
+    <target ref="r0"/>
+  </transition>
+
+</template>
+
+
+<template>
+  <name x="5" y="5">RootNS</name>
+  <location id="rn0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+    <label kind="exponentialrate" x="-15" y="15">1</label>
+  </location>
+  <location id="rn1" x="200" y="0">
+    <name x="165" y="-30">Got_Query</name>
+    <label kind="exponentialrate" x="165" y="15">1</label>
+  </location>
+  <init ref="rn0"/>
+  <transition>
+    <source ref="rn0"/>
+    <target ref="rn1"/>
+    <label kind="synchronisation" x="50" y="-20">ask_root?</label>
+  </transition>
+  <transition>
+    <source ref="rn1"/>
+    <target ref="rn0"/>
+    <label kind="synchronisation" x="50" y="15">root_reply!</label>
+  </transition>
+</template>
+
+<template>
+  <name x="5" y="5">TLD_NS</name>
+  <location id="tn0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+    <label kind="exponentialrate" x="-15" y="15">1</label>
+  </location>
+  <location id="tn1" x="200" y="0">
+    <name x="165" y="-30">Got_Query</name>
+    <label kind="exponentialrate" x="165" y="15">1</label>
+  </location>
+  <init ref="tn0"/>
+  <transition>
+    <source ref="tn0"/>
+    <target ref="tn1"/>
+    <label kind="synchronisation" x="50" y="-20">ask_tld?</label>
+  </transition>
+  <transition>
+    <source ref="tn1"/>
+    <target ref="tn0"/>
+    <label kind="synchronisation" x="50" y="15">tld_reply!</label>
+  </transition>
+</template>
+
+<template>
+  <name x="5" y="5">AuthNS</name>
+  <location id="an0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+    <label kind="exponentialrate" x="-15" y="15">1</label>
+  </location>
+  <location id="an1" x="200" y="0">
+    <name x="165" y="-30">Got_Query</name>
+    <label kind="exponentialrate" x="165" y="15">1</label>
+  </location>
+  <init ref="an0"/>
+  <transition>
+    <source ref="an0"/>
+    <target ref="an1"/>
+    <label kind="synchronisation" x="50" y="-20">ask_auth?</label>
+  </transition>
+  <transition>
+    <source ref="an1"/>
+    <target ref="an0"/>
+    <label kind="synchronisation" x="50" y="15">auth_reply!</label>
+  </transition>
+</template>
+
+
+
+<template>
+  <name x="5" y="5">Attacker_Kaminsky</name>
+  <declaration>int guess;</declaration>
+
+  <location id="a0" x="0" y="0">
+    <name x="-15" y="-30">Idle</name>
+    <label kind="exponentialrate" x="-15" y="15">1</label>
+  </location>
+
+ 
+  <location id="a1" x="200" y="0">
+    <name x="165" y="-30">Sniffing</name>
+    <label kind="exponentialrate" x="165" y="15">1</label>
+  </location>
+
+  
+  <location id="a2" x="400" y="0">
+    <name x="365" y="-30">Flooding</name>
+    <committed/>
+  </location>
+
+ 
+  <location id="a3" x="600" y="0">
+    <name x="575" y="-30">Poisoned</name>
+    <label kind="exponentialrate" x="575" y="15">1</label>
+  </location>
+
+  
+  <location id="a4" x="400" y="160">
+    <name x="365" y="170">Exhausted</name>
+    <label kind="exponentialrate" x="365" y="185">1</label>
+  </location>
+
+  <init ref="a0"/>
+
+  <transition>
+    <source ref="a0"/>
+    <target ref="a1"/>
+    <label kind="assignment" x="50" y="-15">guess = 0, port_guess = 0</label>
+  </transition>
+
+  <transition>
+    <source ref="a1"/>
+    <target ref="a2"/>
+    <label kind="guard" x="240" y="-15">query_in_progress</label>
+  </transition>
+
+
+  <transition>
+    <source ref="a2"/>
+    <target ref="a2"/>
+    <label kind="guard" x="355" y="-40">guess &lt; MAX_GUESS &amp;&amp; guess != txid</label>
+    <label kind="assignment" x="355" y="-25">guess = guess + 1</label>
+  </transition>
+
+  <transition>
+    <source ref="a2"/>
+    <target ref="a2"/>
+    <label kind="guard" x="355" y="20">guess == txid &amp;&amp; port_guess &lt; MAX_PORT_GUESS &amp;&amp; port_guess != source_port</label>
+    <label kind="assignment" x="355" y="35">port_guess = port_guess + 1</label>
+  </transition>
+
+  <transition>
+    <source ref="a2"/>
+    <target ref="a3"/>
+    <label kind="guard" x="440" y="-30">guess == txid &amp;&amp; port_guess == source_port</label>
+    <label kind="synchronisation" x="440" y="-15">fake_auth_reply!</label>
+  </transition>
+
+
+  <transition>
+    <source ref="a2"/>
+    <target ref="a4"/>
+    <label kind="guard" x="340" y="80">(guess &gt;= MAX_GUESS &amp;&amp; guess != txid) ||
+(guess == txid &amp;&amp; port_guess &gt;= MAX_PORT_GUESS &amp;&amp; port_guess != source_port)</label>
+  </transition>
+
+  
+  <transition>
+    <source ref="a4"/>
+    <target ref="a0"/>
+    <label kind="guard" x="340" y="130">!query_in_progress</label>
+  </transition>
+
+</template>
+
+
+<system>
+client   = Client();
+resolver = Resolver();
+rootns   = RootNS();
+tldns    = TLD_NS();
+authns   = AuthNS();
+attacker = Attacker_Kaminsky();
+
+system client, resolver, rootns, tldns, authns, attacker;
+</system>
+
+
+
+<queries>
+
+  <query>
+    <formula>A[] not deadlock</formula>
+    <comment>G1 - No deadlock. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>E&lt;&gt; client.Resolved</formula>
+    <comment>G2 - Client CAN reach Resolved. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>E&lt;&gt; resolver.Wait_Auth</formula>
+    <comment>G3 - Resolver CAN reach Wait_Auth. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>E&lt;&gt; (resolved_ip == REAL_IP)</formula>
+    <comment>G4 - Real IP CAN be stored in cache. Expected: SATISFIED</comment>
+  </query>
+
+
+  <query>
+    <formula>A[] not cache_poisoned</formula>
+    <comment>G5 - MAIN DEFENCE: cache is NEVER poisoned. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>A[] (resolved_ip != FAKE_IP)</formula>
+    <comment>G6 - Fake IP is NEVER stored. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>A[] not attacker.Poisoned</formula>
+    <comment>G7 - Attacker NEVER reaches Poisoned state. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>A[] (resolver.Wait_Auth imply resolved_ip == 0)</formula>
+    <comment>G8 - IP unknown while waiting for Auth reply. Expected: SATISFIED</comment>
+  </query>
+
+  <query>
+    <formula>client.Waiting --&gt; (client.Resolved or client.Failed)</formula>
+    <comment>G9 - Every query always terminates. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>E&lt;&gt; (client.Resolved &amp;&amp; resolved_ip == REAL_IP)</formula>
+    <comment>G10 - Client CAN resolve with the REAL IP. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>E&lt;&gt; attacker.Exhausted</formula>
+    <comment>G11 - Attacker CAN exhaust all guesses and fail. Expected: SATISFIED</comment>
+  </query>
+
+ 
+  <query>
+    <formula>A[] (resolver.Wait_Auth imply source_port == RANDOM_PORT)</formula>
+    <comment>G12 - Random port always set during Wait_Auth. Expected: SATISFIED</comment>
+  </query>
+  <query>
+    <formula>E&lt;&gt; (source_port == RANDOM_PORT &amp;&amp; resolver.Wait_Auth)</formula>
+    <comment>G13 - Randomized port IS active during Wait_Auth. Expected: SATISFIED</comment>
+  </query>
+
+  
+  <query>
+    <formula>Pr[&lt;=100] (&lt;&gt; attacker.Poisoned)</formula>
+    <comment>SMC1 - Probability attacker succeeds within 100 time units. Expected: 0 (port randomization blocks it).</comment>
+  </query>
+  <query>
+    <formula>Pr[&lt;=100] (&lt;&gt; client.Resolved)</formula>
+    <comment>SMC2 - Probability client successfully resolves within 100 time units.</comment>
+  </query>
+  <query>
+    <formula>simulate [&lt;=100] { resolved_ip }</formula>
+    <comment>SMC3 - Simulate resolved_ip over time (one trace). [F7] Removed stray '1' and path operator from expression list.</comment>
+  </query>
+
+</queries>
+
+</nta>
